@@ -7,7 +7,7 @@ import { TypingIndicator } from './TypingIndicator.jsx';
 import { MessageInput } from './MessageInput.jsx';
 import { ConversationDetails } from './ConversationDetails.jsx';
 import { PinnedBanner } from './PinnedBanner.jsx';
-import { Sparkles, Check } from 'lucide-react';
+import { Sparkles, Check, ArrowLeft } from 'lucide-react';
 import { EmptyChatGraphic } from '../common/Graphics.jsx';
 import { ChatBackground } from './ChatBackground.jsx';
 import { ThreadDrawer } from './ThreadDrawer.jsx';
@@ -49,6 +49,18 @@ export const ChatArea = ({ onBackMobile }) => {
           <Sparkles className="w-4 h-4 text-amber-500 animate-pulse"/>
           <span className="font-medium">Real-time WebSocket streaming & optimistic updates active</span>
         </div>
+
+        {/* Mobile Back Button if in empty chat view */}
+        {onBackMobile && (
+          <button
+            type="button"
+            onClick={onBackMobile}
+            className="md:hidden mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-bold shadow-lg shadow-purple-600/30 hover:scale-105 active:scale-95 transition-all z-20 cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Conversations</span>
+          </button>
+        )}
       </main>);
     }
     return (<main className="flex-1 h-full flex overflow-hidden bg-slate-100/60 dark:bg-[#0b0f19] relative">

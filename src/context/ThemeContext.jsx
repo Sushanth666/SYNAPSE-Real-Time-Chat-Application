@@ -2,11 +2,21 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 const ThemeContext = createContext(undefined);
 export const ThemeProvider = ({ children }) => {
     const [theme, setThemeState] = useState(() => {
-        const saved = localStorage.getItem('pulsechat_theme');
-        if (saved === 'light' || saved === 'dark')
-            return saved;
-        return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        try {
+            const saved = localStorage.getItem('pulsechat_theme');
+            const explicit = localStorage.getItem('synapse_theme_explicit');
+            // Only honor dark if user explicitly chose it via toggle/settings
+            if (explicit && (saved === 'light' || saved === 'dark')) {
+                return saved;
+            }
+            if (saved === 'light') {
+                return 'light';
+            }
+        } catch {}
+        // Default theme is light across all devices
+        return 'light';
     });
+
     useEffect(() => {
         const root = document.documentElement;
         const body = document.body;
@@ -26,12 +36,27 @@ export const ThemeProvider = ({ children }) => {
                 body.classList.add('light');
             }
         }
-        localStorage.setItem('pulsechat_theme', theme);
+        try {
+            localStorage.setItem('pulsechat_theme', theme);
+        } catch {}
     }, [theme]);
+
     const toggleTheme = () => {
-        setThemeState(prev => (prev === 'dark' ? 'light' : 'dark'));
+        setThemeState(prev => {
+            const next = prev === 'dark' ? 'light' : 'dark';
+            try {
+                localStorage.setItem('synapse_theme_explicit', 'true');
+                localStorage.setItem('pulsechat_theme', next);
+            } catch {}
+            return next;
+        });
     };
+
     const setTheme = (t) => {
+        try {
+            localStorage.setItem('synapse_theme_explicit', 'true');
+            localStorage.setItem('pulsechat_theme', t);
+        } catch {}
         setThemeState(t);
     };
     return (<ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>
