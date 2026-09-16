@@ -1053,6 +1053,18 @@ wss.on('connection', (ws) => {
   });
 });
 
+// Serve static frontend in production if dist/ exists
+const distDir = path.resolve(process.cwd(), 'dist');
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/ws') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    res.sendFile(path.join(distDir, 'index.html'));
+  });
+}
+
 server.listen(PORT, () => {
   console.log(`[Synapse Server] REST & WebSocket API listening on http://localhost:${PORT}`);
 });
