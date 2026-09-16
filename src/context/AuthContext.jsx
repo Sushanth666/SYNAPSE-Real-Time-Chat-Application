@@ -433,6 +433,10 @@ export const AuthProvider = ({ children }) => {
             console.warn('Failed to save credentials to localStorage:', storageErr);
         }
 
+        if (onSuccess) {
+            await onSuccess(registeredUser);
+        }
+
         if (autoLogin) {
             const authUser = { ...registeredUser, status: 'online' };
             setUser(authUser);
@@ -440,10 +444,6 @@ export const AuthProvider = ({ children }) => {
             setAllUsers(prev => [authUser, ...prev.filter(u => u.id !== authUser.id)]);
             localStorage.setItem('pulsechat_token', token);
             localStorage.setItem('pulsechat_userid', registeredUser.id);
-        }
-
-        if (onSuccess) {
-            await onSuccess(registeredUser);
         }
 
         fetchAllUsers().catch(() => {});

@@ -263,8 +263,8 @@ export const AuthView = () => {
                         message: `Welcome to Synapse, ${newUser.name}! Setting up your workspace...`,
                         user: newUser
                     });
-                    // Display popup briefly then proceed to chat workspace
-                    await new Promise(r => setTimeout(r, 1200));
+                    // Display Account Created popup for 1.6s so user clearly sees the confirmation
+                    await new Promise(r => setTimeout(r, 1600));
                     setAuthPopup(null);
                 }
             });
@@ -877,7 +877,7 @@ export const AuthView = () => {
                 />
               </div>
               <p className="relative z-10 text-[11px] text-slate-400 dark:text-slate-500 mt-2 font-medium">
-                {authPopup.type === 'login_success' ? 'Connecting to chat workspace...' : 'Redirecting to Sign In in 1 to 2 seconds...'}
+                {authPopup.type === 'login_success' ? 'Connecting to chat workspace...' : 'Connecting to your workspace in 1 to 2 seconds...'}
               </p>
             </div>
           )}
