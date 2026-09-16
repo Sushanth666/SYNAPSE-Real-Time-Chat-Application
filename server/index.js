@@ -584,7 +584,35 @@ app.get('/api/conversations', (req, res) => {
     })
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-  res.json(userConversations);
+  // Strictly deduplicate conversations so no user sees duplicate chats
+  const seenIds = new Set();
+  const seenDirectPartnerIds = new Set();
+  const seenNames = new Set();
+  const cleanConvs = [];
+
+  for (const c of userConversations) {
+    if (!c || !c.id || seenIds.has(c.id)) continue;
+
+    if (c.type === 'direct') {
+      const otherId = c.participantIds.find(id => id !== userId);
+      if (!otherId || otherId === userId) continue;
+      if (seenDirectPartnerIds.has(otherId)) continue;
+      const cleanName = (c.name || '').trim().toLowerCase();
+      if (cleanName && seenNames.has(cleanName)) continue;
+
+      seenDirectPartnerIds.add(otherId);
+      if (cleanName) seenNames.add(cleanName);
+    } else if (c.type === 'group') {
+      const cleanName = (c.name || '').trim().toLowerCase();
+      if (cleanName && seenNames.has(cleanName)) continue;
+      if (cleanName) seenNames.add(cleanName);
+    }
+
+    seenIds.add(c.id);
+    cleanConvs.push(c);
+  }
+
+  res.json(cleanConvs);
 });
 
 app.post('/api/conversations', (req, res) => {

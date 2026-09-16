@@ -5,28 +5,46 @@ import { Plus } from 'lucide-react';
 import { NoSearchResultsGraphic, EmptyChatGraphic } from '../common/Graphics.jsx';
 export const ConversationList = ({ onOpenNewChat }) => {
     const { conversations, activeConversationId, setActiveConversationId, searchQuery, activeFilter, isInitialLoading, } = useChat();
-    // Filter conversations
-    const filteredConversations = conversations.filter(c => {
-        // 1. Search Query
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            const matchName = c.name.toLowerCase().includes(q);
-            const matchLastMsg = c.lastMessage?.text?.toLowerCase().includes(q);
-            if (!matchName && !matchLastMsg)
-                return false;
+    // Filter and strictly deduplicate conversations so no user ever sees duplicate chats
+    const filteredConversations = React.useMemo(() => {
+        const seenIds = new Set();
+        const seenDirectNames = new Set();
+        const seenGroupNames = new Set();
+        const result = [];
+
+        for (const c of (conversations || [])) {
+            if (!c || !c.id) continue;
+            if (seenIds.has(c.id)) continue;
+
+            if (c.type === 'direct') {
+                const normName = (c.name || '').trim().toLowerCase();
+                if (normName && seenDirectNames.has(normName)) continue;
+                if (normName) seenDirectNames.add(normName);
+            } else if (c.type === 'group') {
+                const normName = (c.name || '').trim().toLowerCase();
+                if (normName && seenGroupNames.has(normName)) continue;
+                if (normName) seenGroupNames.add(normName);
+            }
+
+            seenIds.add(c.id);
+
+            // 1. Search Query
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase();
+                const matchName = c.name?.toLowerCase().includes(q);
+                const matchLastMsg = c.lastMessage?.text?.toLowerCase().includes(q);
+                if (!matchName && !matchLastMsg) continue;
+            }
+
+            // 2. Filter Pills
+            if (activeFilter === 'unread' && !(c.unreadCount > 0)) continue;
+            if (activeFilter === 'direct' && c.type !== 'direct') continue;
+            if (activeFilter === 'group' && c.type !== 'group') continue;
+
+            result.push(c);
         }
-        // 2. Filter Pills
-        if (activeFilter === 'unread') {
-            return (c.unreadCount || 0) > 0;
-        }
-        if (activeFilter === 'direct') {
-            return c.type === 'direct';
-        }
-        if (activeFilter === 'group') {
-            return c.type === 'group';
-        }
-        return true;
-    });
+        return result;
+    }, [conversations, searchQuery, activeFilter]);
     if (isInitialLoading) {
         return (<div className="flex-1 p-3 space-y-2 overflow-hidden">
         {[1, 2, 3, 4, 5, 6].map((i, idx) => (<div key={i} className="flex items-center gap-3 p-2 rounded-xl opacity-0 animate-fade-in-left" style={{ animationDelay: `${idx * 60}ms`, animationFillMode: 'forwards' }}>

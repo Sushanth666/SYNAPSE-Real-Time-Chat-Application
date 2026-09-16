@@ -219,6 +219,42 @@ export const ChatProvider = ({ children }) => {
     const currentHasMore = activeConversationId ? (hasMoreMap[activeConversationId] ?? false) : false;
     const currentTypingUsers = activeConversationId ? (typingMap[activeConversationId] || []) : [];
     const activePinnedMessage = currentMessages.find(m => m.isPinned) || null;
+    // Strict deduplication helper to ensure zero duplicate chats across all users
+    const deduplicateConversations = useCallback((list, currentUserId) => {
+        if (!Array.isArray(list)) return [];
+        const seenIds = new Set();
+        const seenDirectKeys = new Set();
+        const seenNames = new Set();
+        const result = [];
+
+        for (const c of list) {
+            if (!c || !c.id) continue;
+            if (seenIds.has(c.id)) continue;
+
+            if (c.type === 'direct') {
+                const partnerId = c.participantIds?.find(id => id !== currentUserId);
+                if (!partnerId || partnerId === currentUserId) continue;
+
+                const partnerName = (c.name || '').trim().toLowerCase();
+                if (partnerName && (partnerName === user?.name?.trim()?.toLowerCase())) continue;
+
+                if (seenDirectKeys.has(partnerId)) continue;
+                if (partnerName && seenNames.has(partnerName)) continue;
+
+                seenDirectKeys.add(partnerId);
+                if (partnerName) seenNames.add(partnerName);
+            } else if (c.type === 'group') {
+                const groupName = (c.name || '').trim().toLowerCase();
+                if (groupName && seenNames.has(groupName)) continue;
+                if (groupName) seenNames.add(groupName);
+            }
+
+            seenIds.add(c.id);
+            result.push(c);
+        }
+        return result;
+    }, [user?.name]);
+
     // Helper to generate or load fallback conversations locally
     const getLocalConversations = useCallback((currentUserId) => {
         if (!currentUserId) return [];
@@ -228,7 +264,10 @@ export const ChatProvider = ({ children }) => {
             if (saved) {
                 const parsed = JSON.parse(saved);
                 if (Array.isArray(parsed) && parsed.length > 0) {
-                    return parsed;
+                    const clean = deduplicateConversations(parsed, currentUserId);
+                    if (clean.length > 0) {
+                        return clean;
+                    }
                 }
             }
         } catch {}
@@ -249,10 +288,23 @@ export const ChatProvider = ({ children }) => {
             };
         });
 
-        // 2. Teammates for direct chats (8 teammates)
-        const eligibleTeammates = (allUsers && allUsers.length > 0 ? allUsers : initialUsers).filter(
-            u => u.id !== currentUserId && u.name?.toLowerCase() !== currentUser.name?.toLowerCase()
-        ).slice(0, 8);
+        // 2. Teammates for direct chats (strictly unique teammates)
+        const seenKeys = new Set();
+        const eligibleTeammates = [];
+        const sourceUsers = (allUsers && allUsers.length > 0 ? allUsers : initialUsers);
+
+        for (const u of sourceUsers) {
+            if (!u || !u.id) continue;
+            if (u.id === currentUserId) continue;
+            const normName = (u.name || '').trim().toLowerCase();
+            if (normName && normName === currentUser.name?.trim()?.toLowerCase()) continue;
+            const normEmail = (u.email || '').trim().toLowerCase();
+            const key = normEmail || normName || u.id;
+            if (seenKeys.has(key)) continue;
+            seenKeys.add(key);
+            eligibleTeammates.push(u);
+            if (eligibleTeammates.length >= 8) break;
+        }
 
         const unreadCounts = [2, 4, 1, 2, 0, 0, 0, 0];
         const directChats = eligibleTeammates.map((other, idx) => {
@@ -293,7 +345,7 @@ export const ChatProvider = ({ children }) => {
             };
         });
 
-        const combined = [...groups, ...directChats].sort(
+        const combined = deduplicateConversations([...groups, ...directChats], currentUserId).sort(
             (a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
         );
 
@@ -302,7 +354,7 @@ export const ChatProvider = ({ children }) => {
         } catch {}
 
         return combined;
-    }, [allUsers, user]);
+    }, [allUsers, user, deduplicateConversations]);
 
     // Mark active chat as read
     const markAsRead = useCallback((convId) => {
@@ -444,10 +496,14 @@ export const ChatProvider = ({ children }) => {
             loaded = getLocalConversations(user.id);
         }
 
-        setConversations(loaded);
+        const cleanList = deduplicateConversations(loaded, user.id);
+        setConversations(cleanList);
+        try {
+            localStorage.setItem(`synapse_conversations_${user.id}`, JSON.stringify(cleanList));
+        } catch {}
 
         if (activeConversationId) {
-            const stillExists = loaded.some((c) => c.id === activeConversationId);
+            const stillExists = cleanList.some((c) => c.id === activeConversationId);
             if (!stillExists) {
                 setActiveConversationId(null);
             } else if (!messagesMap[activeConversationId]) {
@@ -1025,6 +1081,23 @@ export const ChatProvider = ({ children }) => {
     }, [activeConversationId, user, conversations, allUsers, send]);
     // Create Conversation (direct or group)
     const createConversation = useCallback(async (type, name, participantIds, avatar, description) => {
+        // If direct chat, check if a conversation already exists with this partner
+        if (type === 'direct' && participantIds && participantIds.length >= 2) {
+            const otherId = participantIds.find(id => id !== user?.id);
+            const otherUser = allUsers.find(u => u.id === otherId);
+            const existing = conversations.find(c =>
+                c.type === 'direct' && (
+                    (otherId && c.participantIds?.includes(otherId)) ||
+                    (otherUser?.name && c.name?.toLowerCase() === otherUser.name.toLowerCase()) ||
+                    (name && c.name?.toLowerCase() === name.toLowerCase())
+                )
+            );
+            if (existing) {
+                setActiveConversationId(existing.id);
+                return existing;
+            }
+        }
+
         let created = null;
         try {
             const res = await fetch('/api/conversations', {
@@ -1053,7 +1126,7 @@ export const ChatProvider = ({ children }) => {
         }
 
         setConversations(prev => {
-            const next = [created, ...prev.filter(c => c.id !== created.id)];
+            const next = deduplicateConversations([created, ...prev.filter(c => c.id !== created.id)], user?.id);
             if (user?.id) {
                 try {
                     localStorage.setItem(`synapse_conversations_${user.id}`, JSON.stringify(next));
@@ -1064,7 +1137,7 @@ export const ChatProvider = ({ children }) => {
         setActiveConversationId(created.id);
         send('conversation:new', created);
         return created;
-    }, [user, send]);
+    }, [user, allUsers, conversations, send, deduplicateConversations]);
     // Real-Time Socket Event Listeners
     useEffect(() => {
         const unsubNewMsg = on('message:new', ({ message, tempId }) => {
@@ -1207,9 +1280,7 @@ export const ChatProvider = ({ children }) => {
         });
         const unsubNewConv = on('conversation:new', (conv) => {
             setConversations(prev => {
-                if (prev.some(c => c.id === conv.id))
-                    return prev;
-                return [conv, ...prev];
+                return deduplicateConversations([conv, ...prev.filter(c => c.id !== conv.id)], user?.id);
             });
         });
         const unsubPresence = on('presence:update', (payload) => {

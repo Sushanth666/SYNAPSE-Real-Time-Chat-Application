@@ -57,11 +57,26 @@ export const NewChatModal = ({ isOpen, onClose }) => {
         return null;
     }
 
-    // Filter available contacts (exclude myself)
-    const contacts = allUsers.filter(u => u.id !== user.id);
+    // Filter available contacts (strictly exclude myself and remove duplicates)
+    const contacts = React.useMemo(() => {
+        const seen = new Set();
+        const list = [];
+        for (const u of (allUsers || [])) {
+            if (!u || !u.id || u.id === user.id) continue;
+            const normName = (u.name || '').trim().toLowerCase();
+            if (normName && normName === user.name?.trim()?.toLowerCase()) continue;
+            const normEmail = (u.email || '').trim().toLowerCase();
+            const key = normEmail || normName || u.id;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            list.push(u);
+        }
+        return list;
+    }, [allUsers, user]);
+
     const filteredContacts = contacts.filter(u =>
         u.name.toLowerCase().includes(search.toLowerCase()) ||
-        u.email.toLowerCase().includes(search.toLowerCase())
+        (u.email && u.email.toLowerCase().includes(search.toLowerCase()))
     );
 
     const toggleSelect = (userId) => {
