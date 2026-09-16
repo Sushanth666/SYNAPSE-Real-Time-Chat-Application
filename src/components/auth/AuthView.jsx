@@ -30,8 +30,8 @@ export const AuthView = () => {
         if (!trimmedEmail) {
             const failData = {
                 type: 'login_failed',
-                title: 'Email Required',
-                message: 'Please enter your email address to sign in.'
+                title: 'Email or Username Required',
+                message: 'Please enter your email address or username to sign in.'
             };
             setError({
                 code: 'MISSING_FIELD',
@@ -42,20 +42,22 @@ export const AuthView = () => {
             return;
         }
 
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(trimmedEmail)) {
-            const failData = {
-                type: 'login_failed',
-                title: 'Invalid Email Format',
-                message: 'Please enter a valid email address (e.g. alex@example.com).'
-            };
-            setError({
-                code: 'INVALID_EMAIL',
-                title: failData.title,
-                message: failData.message
-            });
-            setAuthPopup(failData);
-            return;
+        if (trimmedEmail.includes('@')) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(trimmedEmail)) {
+                const failData = {
+                    type: 'login_failed',
+                    title: 'Invalid Email Format',
+                    message: 'Please enter a valid email address (e.g. alex@example.com).'
+                };
+                setError({
+                    code: 'INVALID_EMAIL',
+                    title: failData.title,
+                    message: failData.message
+                });
+                setAuthPopup(failData);
+                return;
+            }
         }
 
         if (!password) {
@@ -556,11 +558,11 @@ export const AuthView = () => {
 
               <div>
                 <label htmlFor="login-email" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Email Address
+                  Email Address or Full Name
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"/>
-                  <input id="login-email" data-testid="login-email" type="email" placeholder="alex@example.com" value={email} onChange={(e) => { setEmail(e.target.value); if (error) setError(null); }} className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 text-sm focus:outline-none transition-all border ${
+                  <input id="login-email" data-testid="login-email" type="text" placeholder="e.g. alex@example.com or Alex Johnson" value={email} onChange={(e) => { setEmail(e.target.value); if (error) setError(null); }} className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder-slate-400 text-sm focus:outline-none transition-all border ${
                     (error?.code === 'EMAIL_NOT_REGISTERED' || error?.code === 'INVALID_EMAIL')
                       ? 'border-rose-400 dark:border-rose-500 ring-2 ring-rose-500/20'
                       : 'border-slate-200 dark:border-slate-800 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20'

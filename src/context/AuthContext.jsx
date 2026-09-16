@@ -149,13 +149,14 @@ export const AuthProvider = ({ children }) => {
     }, [fetchAllUsers, getSavedCredentials]);
 
     const login = async (email, password, { onSuccess } = {}) => {
-        const normalizedEmail = email.trim().toLowerCase();
+        const trimmedInput = email.trim();
+        const normalizedEmail = trimmedInput.toLowerCase();
 
-        // 1. Attempt login with server (sending email + password)
+        // 1. Attempt login with server (sending email or username + password)
         let res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: normalizedEmail, password })
+            body: JSON.stringify({ email: trimmedInput, password })
         });
 
         // 2. If login request failed
@@ -377,10 +378,6 @@ export const AuthProvider = ({ children }) => {
             console.warn('Failed to save credentials to localStorage:', storageErr);
         }
 
-        if (onSuccess) {
-            await onSuccess(registeredUser);
-        }
-
         if (autoLogin) {
             const authUser = { ...registeredUser, status: 'online' };
             setUser(authUser);
@@ -388,6 +385,10 @@ export const AuthProvider = ({ children }) => {
             setAllUsers(prev => prev.map(u => u.id === authUser.id ? authUser : u));
             localStorage.setItem('pulsechat_token', data.token);
             localStorage.setItem('pulsechat_userid', data.user.id);
+        }
+
+        if (onSuccess) {
+            await onSuccess(registeredUser);
         }
 
         await fetchAllUsers();
