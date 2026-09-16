@@ -100,6 +100,7 @@ export const AuthView = () => {
                     actionLabel: `Register as ${trimmedEmail} →`,
                     onAction: () => {
                         setMode('register');
+                        setEmail(trimmedEmail);
                         setError(null);
                         setAuthPopup(null);
                     }
@@ -252,40 +253,16 @@ export const AuthView = () => {
         setSubmitting(true);
         try {
             await register(trimmedName, trimmedEmail, null, bio.trim() || 'Team Member', password, {
-                autoLogin: false,
+                autoLogin: true,
                 onSuccess: async (newUser) => {
                     setAuthPopup({
                         type: 'register_success',
                         title: 'Account Created Successfully!',
-                        message: `Welcome to Synapse, ${newUser.name}! Your account has been created. Redirecting you to login with your new credentials...`,
-                        user: newUser,
-                        actionLabel: 'Sign In Now →',
-                        onAction: () => {
-                            setMode('login');
-                            setEmail(trimmedEmail);
-                            setPassword('');
-                            setConfirmPassword('');
-                            setShowConfirmPassword(false);
-                            setError({
-                                type: 'success',
-                                title: 'Account Created Successfully!',
-                                message: `Welcome, ${newUser.name}! Your account is ready. Please enter your password to sign in.`
-                            });
-                            setAuthPopup(null);
-                        }
+                        message: `Welcome to Synapse, ${newUser.name}! Setting up your workspace...`,
+                        user: newUser
                     });
-                    // Display popup for 1.5 seconds and then redirect to login page
-                    await new Promise(r => setTimeout(r, 1500));
-                    setMode('login');
-                    setEmail(trimmedEmail);
-                    setPassword('');
-                    setConfirmPassword('');
-                    setShowConfirmPassword(false);
-                    setError({
-                        type: 'success',
-                        title: 'Account Created Successfully!',
-                        message: `Welcome, ${newUser.name}! Your account is ready. Please enter your password to sign in.`
-                    });
+                    // Display popup briefly then proceed to chat workspace
+                    await new Promise(r => setTimeout(r, 1200));
                     setAuthPopup(null);
                 }
             });
@@ -301,6 +278,7 @@ export const AuthView = () => {
                     actionLabel: `Sign In as ${trimmedEmail} →`,
                     onAction: () => {
                         setMode('login');
+                        setEmail(trimmedEmail);
                         setError(null);
                         setAuthPopup(null);
                     }

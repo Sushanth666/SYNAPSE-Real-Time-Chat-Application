@@ -22,6 +22,9 @@ dist/
 dist-ssr/
 *.local
 
+# Local persistent data
+data/
+
 # Environment variables
 .env
 .env.local

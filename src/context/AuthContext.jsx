@@ -63,7 +63,7 @@ export const AuthProvider = ({ children }) => {
                     // Try to auto-rehydrate using saved credentials from localStorage
                     if (res.status === 404 || res.status === 401) {
                         const storedCreds = getSavedCredentials();
-                        const cred = storedCreds.find(c => c.id === savedUserId || c.email);
+                        const cred = storedCreds.find(c => c.id === savedUserId || (c.email && c.email.toLowerCase() === (user?.email || '').toLowerCase()));
                         if (cred) {
                             try {
                                 // Re-register the user on the server to restore their session
@@ -73,6 +73,7 @@ export const AuthProvider = ({ children }) => {
                                     body: JSON.stringify({
                                         name: cred.name,
                                         email: cred.email,
+                                        password: cred.password || 'password123',
                                         avatar: cred.avatar,
                                         bio: cred.bio
                                     })
@@ -93,7 +94,7 @@ export const AuthProvider = ({ children }) => {
                                 const loginRes = await fetch('/api/auth/login', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ email: cred.email })
+                                    body: JSON.stringify({ email: cred.email, password: cred.password || 'password123' })
                                 });
                                 if (loginRes.ok) {
                                     const loginData = await loginRes.json();
@@ -118,11 +119,9 @@ export const AuthProvider = ({ children }) => {
                 }
                 catch {
                     // Network error — keep the cached token/user if possible, don't force logout
-                    // The user will be shown as offline until WebSocket reconnects
                     const storedCreds = getSavedCredentials();
                     const cred = storedCreds.find(c => c.id === savedUserId);
                     if (cred) {
-                        // Optimistically restore user from local data so they stay on chat screen
                         const offlineUser = {
                             id: cred.id,
                             name: cred.name,
@@ -148,36 +147,53 @@ export const AuthProvider = ({ children }) => {
         };
         initAuth();
     }, [fetchAllUsers, getSavedCredentials]);
+
     const login = async (email, password, { onSuccess } = {}) => {
         const normalizedEmail = email.trim().toLowerCase();
-        // 1. Attempt login with server
+
+        // 1. Attempt login with server (sending email + password)
         let res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: normalizedEmail })
+            body: JSON.stringify({ email: normalizedEmail, password })
         });
-        // 2. If user not found on server, check if registered credentials exist in localStorage!
+
+        // 2. If login request failed
         if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+
+            // If incorrect password, don't try rehydrating — throw immediately so user can fix password
+            if (error.code === 'INCORRECT_PASSWORD') {
+                const err = new Error(error.error || 'The password you entered does not match our records. Please try again.');
+                err.code = 'INCORRECT_PASSWORD';
+                throw err;
+            }
+
+            // If email is not registered on the server, check if registered credentials exist in localStorage!
             const storedCreds = getSavedCredentials();
-            const found = storedCreds.find(c => c.email.toLowerCase() === normalizedEmail);
+            const found = storedCreds.find(c => c.email && c.email.toLowerCase() === normalizedEmail);
+
             if (found) {
-                // Validate password if both provided
+                // Validate password if user set a password in local credentials
                 if (password && found.password && password !== found.password) {
-                    const err = new Error('Incorrect password. Please verify your password and try again.');
+                    const err = new Error('The password you entered does not match our records. Please try again.');
                     err.code = 'INCORRECT_PASSWORD';
                     throw err;
                 }
-                // Automatically rehydrate/register user on server
+
+                // Automatically rehydrate/register user on the server
                 const reRegRes = await fetch('/api/auth/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        name: found.name,
+                        name: found.name || 'Synapse User',
                         email: found.email,
+                        password: found.password || password || 'password123',
                         avatar: found.avatar,
-                        bio: found.bio
+                        bio: found.bio || 'Synapse user'
                     })
                 });
+
                 if (reRegRes.ok) {
                     const regData = await reRegRes.json();
                     const authUser = { ...regData.user, status: 'online' };
@@ -191,21 +207,36 @@ export const AuthProvider = ({ children }) => {
                     localStorage.setItem('pulsechat_userid', regData.user.id);
                     await fetchAllUsers();
                     return;
+                } else {
+                    // If register failed with EMAIL_ALREADY_EXISTS, retry login with credentials
+                    const retryLogin = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: normalizedEmail, password })
+                    });
+                    if (retryLogin.ok) {
+                        const loginData = await retryLogin.json();
+                        const authUser = { ...loginData.user, status: 'online' };
+                        if (onSuccess) {
+                            await onSuccess(authUser);
+                        }
+                        setUser(authUser);
+                        setToken(loginData.token);
+                        setAllUsers(prev => prev.map(u => u.id === authUser.id ? authUser : u));
+                        localStorage.setItem('pulsechat_token', loginData.token);
+                        localStorage.setItem('pulsechat_userid', loginData.user.id);
+                        await fetchAllUsers();
+                        return;
+                    }
                 }
             }
-            const error = await res.json().catch(() => ({}));
-            const err = new Error(error.error || 'This email is not registered. Please check for typos or click Register to create an account.');
+
+            const err = new Error(error.error || `No account was found for "${email.trim()}". Would you like to create a new account?`);
             err.code = error.code || 'EMAIL_NOT_REGISTERED';
             throw err;
         }
-        // 3. Server accepted: verify password if user registered with a password in localStorage
-        const storedCreds = getSavedCredentials();
-        const found = storedCreds.find(c => c.email.toLowerCase() === normalizedEmail);
-        if (found && password && found.password && password !== found.password) {
-            const err = new Error('Incorrect password. Please verify your password and try again.');
-            err.code = 'INCORRECT_PASSWORD';
-            throw err;
-        }
+
+        // 3. Server accepted login
         const data = await res.json();
         const authUser = { ...data.user, status: 'online' };
         if (onSuccess) {
@@ -216,6 +247,23 @@ export const AuthProvider = ({ children }) => {
         setAllUsers(prev => prev.map(u => u.id === authUser.id ? authUser : u));
         localStorage.setItem('pulsechat_token', data.token);
         localStorage.setItem('pulsechat_userid', data.user.id);
+
+        // Store/update credentials in localStorage
+        try {
+            const existingCreds = getSavedCredentials();
+            const filtered = existingCreds.filter(c => c.email && c.email.toLowerCase() !== normalizedEmail);
+            filtered.unshift({
+                id: data.user.id,
+                name: data.user.name,
+                email: normalizedEmail,
+                password: password || data.user.password || 'password123',
+                avatar: data.user.avatar,
+                bio: data.user.bio,
+                lastLoginAt: new Date().toISOString()
+            });
+            localStorage.setItem('pulsechat_registered_credentials', JSON.stringify(filtered));
+        } catch {}
+
         // Save to saved accounts list for switch user modal
         try {
             const savedAccountsRaw = localStorage.getItem('pulsechat_saved_accounts');
@@ -247,6 +295,7 @@ export const AuthProvider = ({ children }) => {
                         body: JSON.stringify({
                             name: found.name,
                             email: found.email,
+                            password: found.password || 'password123',
                             avatar: found.avatar,
                             bio: found.bio
                         })
@@ -284,7 +333,13 @@ export const AuthProvider = ({ children }) => {
         const res = await fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email: normalizedEmail, avatar, bio })
+            body: JSON.stringify({
+                name: name.trim(),
+                email: normalizedEmail,
+                password: password || 'password123',
+                avatar,
+                bio
+            })
         });
         if (!res.ok) {
             const error = await res.json().catch(() => ({}));

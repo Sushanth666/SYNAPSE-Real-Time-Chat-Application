@@ -20,8 +20,49 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// In-Memory Database
-const users = [...initialUsers];
+// Persistent Data Directory
+const dataDir = path.resolve(process.cwd(), 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+const usersFilePath = path.join(dataDir, 'users.json');
+
+function loadUsers() {
+  try {
+    if (fs.existsSync(usersFilePath)) {
+      const parsed = JSON.parse(fs.readFileSync(usersFilePath, 'utf8'));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const userMap = new Map();
+        initialUsers.forEach(u => userMap.set(u.email.toLowerCase(), { ...u, password: 'password123' }));
+        parsed.forEach(u => {
+          if (u.email) {
+            const key = u.email.toLowerCase();
+            userMap.set(key, { ...userMap.get(key), ...u });
+          }
+        });
+        return Array.from(userMap.values());
+      }
+    }
+  } catch (err) {
+    console.error('Error loading users from file:', err);
+  }
+  const defaults = initialUsers.map(u => ({ ...u, password: 'password123' }));
+  try {
+    fs.writeFileSync(usersFilePath, JSON.stringify(defaults, null, 2), 'utf8');
+  } catch {}
+  return defaults;
+}
+
+function saveUsers() {
+  try {
+    fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Error saving users to file:', err);
+  }
+}
+
+// In-Memory Database (with persistent backing)
+const users = loadUsers();
 const conversations = [...initialConversations];
 const messages = [...initialMessages];
 
@@ -305,19 +346,28 @@ function ensureUnreadChatsForUser(userId, force = false) {
 
 // Auth
 app.post('/api/auth/login', (req, res) => {
-  const { email, userId } = req.body;
+  const { email, userId, password } = req.body;
   let user;
 
   if (userId) {
     user = users.find(u => u.id === userId);
   } else if (email) {
-    user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    const trimmedEmail = email.trim().toLowerCase();
+    user = users.find(u => u.email && u.email.toLowerCase() === trimmedEmail);
   }
 
   if (!user) {
     return res.status(401).json({
-      error: 'This email is not registered. Please check your email address or click Register to create an account.',
+      error: `No account was found for "${email || userId}". Would you like to create a new account?`,
       code: 'EMAIL_NOT_REGISTERED'
+    });
+  }
+
+  // Password verification: if user has a password and a password was submitted, verify it
+  if (user.password && password && user.password !== password) {
+    return res.status(401).json({
+      error: 'The password you entered does not match our records. Please try again.',
+      code: 'INCORRECT_PASSWORD'
     });
   }
 
@@ -341,29 +391,32 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.post('/api/auth/register', (req, res) => {
-  const { name, email, avatar, bio } = req.body;
+  const { name, email, password, avatar, bio } = req.body;
   if (!name || !email) {
-    return res.status(400).json({ error: 'Name and email are required' });
+    return res.status(400).json({ error: 'Name and email are required', code: 'MISSING_FIELD' });
   }
 
-  const existing = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  const trimmedEmail = email.trim().toLowerCase();
+  const existing = users.find(u => u.email && u.email.toLowerCase() === trimmedEmail);
   if (existing) {
     return res.status(400).json({
-      error: 'An account with this email is already registered. Please sign in instead.',
+      error: `An account with "${email.trim()}" is already registered. Please sign in instead.`,
       code: 'EMAIL_ALREADY_EXISTS'
     });
   }
 
   const newUser = {
     id: `u_${Date.now()}`,
-    name,
-    email,
+    name: name.trim(),
+    email: email.trim(),
+    password: password || 'password123',
     avatar: (avatar && typeof avatar === 'string' && avatar.trim()) ? avatar.trim() : null,
     status: 'online',
-    bio: bio || 'Synapse user'
+    bio: bio ? bio.trim() : 'Synapse user'
   };
 
   users.push(newUser);
+  saveUsers();
 
   if (disconnectGraceTimeouts.has(newUser.id)) {
     clearTimeout(disconnectGraceTimeouts.get(newUser.id));
@@ -447,6 +500,7 @@ app.patch('/api/users/profile', (req, res) => {
     user.status = status;
   }
 
+  saveUsers();
   return res.json({ user });
 });
 
