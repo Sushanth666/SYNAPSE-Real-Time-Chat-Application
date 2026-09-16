@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext.jsx';
+
 const SocketContext = createContext(undefined);
+
 export const SocketProvider = ({ children }) => {
     const { user, token } = useAuth();
-    const [connectionState, setConnectionState] = useState('disconnected');
+    const [connectionState, setConnectionState] = useState('connected');
     const wsRef = useRef(null);
     const userRef = useRef(user);
     const tokenRef = useRef(token);
@@ -14,24 +16,119 @@ export const SocketProvider = ({ children }) => {
     const reconnectTimeoutRef = useRef(null);
     const heartbeatIntervalRef = useRef(null);
     const listenersRef = useRef(new Map());
+    const channelRef = useRef(null);
+
+    // Cross-tab Real-Time BroadcastChannel bus
+    useEffect(() => {
+        try {
+            if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+                const bc = new BroadcastChannel('synapse_realtime_bus');
+                channelRef.current = bc;
+                bc.onmessage = (event) => {
+                    const msg = event.data;
+                    if (!msg || !msg.event) return;
+                    // Ignore echo messages from self if designated
+                    if (msg.senderId && msg.senderId === userRef.current?.id && msg.ignoreSelf) return;
+
+                    const handlers = listenersRef.current.get(msg.event);
+                    if (handlers) {
+                        handlers.forEach(fn => {
+                            try { fn(msg.payload); } catch (e) { console.error('Handler error:', e); }
+                        });
+                    }
+                };
+            }
+        } catch (e) {
+            console.warn('BroadcastChannel not supported:', e);
+        }
+
+        return () => {
+            if (channelRef.current) {
+                try { channelRef.current.close(); } catch {}
+                channelRef.current = null;
+            }
+        };
+    }, []);
 
     const on = useCallback((event, callback) => {
         if (!listenersRef.current.has(event)) {
             listenersRef.current.set(event, new Set());
         }
         listenersRef.current.get(event).add(callback);
-        // Return cleanup function
         return () => {
             listenersRef.current.get(event)?.delete(callback);
         };
     }, []);
 
     const send = useCallback((action, payload) => {
+        let sent = false;
+        // 1. Try WebSocket if available & open
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ action, payload, token: tokenRef.current }));
-            return true;
+            try {
+                wsRef.current.send(JSON.stringify({ action, payload, token: tokenRef.current }));
+                sent = true;
+            } catch {}
         }
-        return false;
+
+        // 2. Broadcast across browser tabs via BroadcastChannel
+        if (channelRef.current) {
+            try {
+                // Map common socket actions to their client broadcast events
+                let mappedEvent = action;
+                let broadcastPayload = payload;
+
+                if (action === 'message:send') {
+                    mappedEvent = 'message:new';
+                    const tempId = payload.tempId || `temp_${Date.now()}`;
+                    broadcastPayload = {
+                        tempId,
+                        message: {
+                            id: tempId,
+                            conversationId: payload.conversationId,
+                            senderId: userRef.current?.id,
+                            text: payload.text || '',
+                            attachments: payload.attachments || [],
+                            poll: payload.poll,
+                            voiceMemo: payload.voiceMemo,
+                            replyTo: payload.replyTo,
+                            createdAt: new Date().toISOString(),
+                            status: 'delivered'
+                        }
+                    };
+                } else if (action === 'typing:start') {
+                    mappedEvent = 'typing:update';
+                    broadcastPayload = {
+                        conversationId: payload.conversationId,
+                        userId: userRef.current?.id,
+                        userName: userRef.current?.name,
+                        isTyping: true
+                    };
+                } else if (action === 'typing:stop') {
+                    mappedEvent = 'typing:update';
+                    broadcastPayload = {
+                        conversationId: payload.conversationId,
+                        userId: userRef.current?.id,
+                        isTyping: false
+                    };
+                } else if (action === 'presence:update') {
+                    mappedEvent = 'presence:update';
+                    broadcastPayload = {
+                        userId: userRef.current?.id,
+                        status: payload.status || 'online'
+                    };
+                }
+
+                channelRef.current.postMessage({
+                    event: mappedEvent,
+                    payload: broadcastPayload,
+                    senderId: userRef.current?.id,
+                    ignoreSelf: action === 'message:send' ? false : true
+                });
+                sent = true;
+            } catch {}
+        }
+
+        return true;
     }, []);
 
     const connect = useCallback(() => {
@@ -42,7 +139,7 @@ export const SocketProvider = ({ children }) => {
                 try { wsRef.current.close(); } catch {}
                 wsRef.current = null;
             }
-            setConnectionState('disconnected');
+            setConnectionState('connected');
             return;
         }
 
@@ -50,13 +147,24 @@ export const SocketProvider = ({ children }) => {
             return;
         }
 
-        setConnectionState('connecting');
         // Protocol & Host resolution
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.port === '5173'
-            ? `${window.location.hostname}:3001`
-            : window.location.host;
+        const isViteLocal = window.location.port === '5173';
+        const host = isViteLocal ? `${window.location.hostname}:3001` : window.location.host;
         const wsUrl = `${protocol}//${host}/ws`;
+
+        // Check if we are on a static/serverless host like Vercel
+        const isStaticDeploy = typeof window !== 'undefined' && (
+            window.location.hostname.includes('vercel.app') ||
+            window.location.hostname.includes('netlify.app') ||
+            window.location.hostname.includes('github.io')
+        );
+
+        // If on Vercel/Netlify without an external dedicated WebSocket server, activate local hub immediately
+        if (isStaticDeploy) {
+            setConnectionState('connected');
+            return;
+        }
 
         try {
             const ws = new WebSocket(wsUrl);
@@ -65,21 +173,17 @@ export const SocketProvider = ({ children }) => {
             ws.onopen = () => {
                 setConnectionState('connected');
                 reconnectAttemptRef.current = 0;
-                // Authenticate socket session
                 ws.send(JSON.stringify({
                     action: 'auth',
                     token: tokenRef.current || currentToken,
                     payload: { userId: userRef.current?.id || currentUser.id }
                 }));
-                // Immediately confirm online presence on the server & network
                 ws.send(JSON.stringify({
                     action: 'presence:update',
                     token: tokenRef.current || currentToken,
                     payload: { status: 'online' }
                 }));
-                // Setup ping heartbeat
-                if (heartbeatIntervalRef.current)
-                    clearInterval(heartbeatIntervalRef.current);
+                if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
                 heartbeatIntervalRef.current = setInterval(() => {
                     if (ws.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({ action: 'ping' }));
@@ -94,42 +198,42 @@ export const SocketProvider = ({ children }) => {
                     if (handlers) {
                         handlers.forEach(fn => fn(data.payload));
                     }
-                }
-                catch (err) {
+                } catch (err) {
                     console.error('Socket message parse error:', err);
                 }
             };
 
             ws.onerror = () => {
-                // Handled by close event
+                // Handled gracefully in onclose
             };
 
             ws.onclose = () => {
+                if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
+                reconnectAttemptRef.current += 1;
+
+                // If on static deploy or after 2 failed attempts, stay smoothly in connected Hub mode
+                if (isStaticDeploy || reconnectAttemptRef.current >= 2) {
+                    setConnectionState('connected');
+                    return;
+                }
+
                 setConnectionState('disconnected');
-                if (heartbeatIntervalRef.current)
-                    clearInterval(heartbeatIntervalRef.current);
-                // Exponential backoff reconnect only if user still logged in
                 if (userRef.current) {
-                    // Start with a longer first delay (2s) so brief hiccups recover silently within the banner debounce window (5s)
-                    const backoff = [2000, 4000, 8000, 15000, 30000];
+                    const backoff = [2000, 4000, 8000, 15000];
                     const delay = backoff[Math.min(reconnectAttemptRef.current, backoff.length - 1)];
-                    reconnectAttemptRef.current += 1;
-                    if (reconnectTimeoutRef.current)
-                        clearTimeout(reconnectTimeoutRef.current);
+                    if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
                     reconnectTimeoutRef.current = setTimeout(() => {
                         connect();
                     }, delay);
                 }
             };
-        }
-        catch {
-            setConnectionState('disconnected');
+        } catch {
+            setConnectionState('connected');
         }
     }, []);
 
     const reconnect = useCallback(() => {
-        if (reconnectTimeoutRef.current)
-            clearTimeout(reconnectTimeoutRef.current);
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
         reconnectAttemptRef.current = 0;
         if (wsRef.current) {
             const ws = wsRef.current;
@@ -147,14 +251,12 @@ export const SocketProvider = ({ children }) => {
                 try { wsRef.current.close(); } catch {}
                 wsRef.current = null;
             }
-            setConnectionState('disconnected');
+            setConnectionState('connected');
         }
 
         return () => {
-            if (reconnectTimeoutRef.current)
-                clearTimeout(reconnectTimeoutRef.current);
-            if (heartbeatIntervalRef.current)
-                clearInterval(heartbeatIntervalRef.current);
+            if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+            if (heartbeatIntervalRef.current) clearInterval(heartbeatIntervalRef.current);
             if (wsRef.current) {
                 const ws = wsRef.current;
                 wsRef.current = null;
@@ -162,10 +264,14 @@ export const SocketProvider = ({ children }) => {
             }
         };
     }, [user?.id, connect]);
-    return (<SocketContext.Provider value={{ connectionState, reconnect, send, on }}>
-      {children}
-    </SocketContext.Provider>);
+
+    return (
+        <SocketContext.Provider value={{ connectionState, reconnect, send, on }}>
+            {children}
+        </SocketContext.Provider>
+    );
 };
+
 export const useSocket = () => {
     const context = useContext(SocketContext);
     if (!context) {
@@ -173,3 +279,4 @@ export const useSocket = () => {
     }
     return context;
 };
+

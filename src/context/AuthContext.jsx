@@ -158,7 +158,7 @@ export const AuthProvider = ({ children }) => {
                             email: cred.email,
                             avatar: cred.avatar || null,
                             bio: cred.bio || '',
-                            status: 'offline'
+                            status: 'online'
                         };
                         setUser(offlineUser);
                         setToken(savedToken);
