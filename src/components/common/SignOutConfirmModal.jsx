@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { LogOut, X, ShieldAlert, Sparkles, Clock, LogIn } from 'lucide-react';
@@ -14,7 +14,13 @@ export const SignOutConfirmModal = ({ isOpen, onCancel, onConfirm }) => {
     const [isGreeting, setIsGreeting] = useState(false);
     const [countdown, setCountdown] = useState(5);
 
-    // Reset greeting state when modal is closed/opened
+    // Keep onConfirm stable in a ref so external re-renders do NOT reset the countdown
+    const onConfirmRef = useRef(onConfirm);
+    useEffect(() => {
+        onConfirmRef.current = onConfirm;
+    });
+
+    // Reset greeting state when modal is closed
     useEffect(() => {
         if (!isOpen) {
             setIsGreeting(false);
@@ -24,27 +30,28 @@ export const SignOutConfirmModal = ({ isOpen, onCancel, onConfirm }) => {
 
     // 5-second countdown timer when in greeting mode
     useEffect(() => {
-        let intervalId;
-        let timeoutId;
+        if (!isGreeting || !isOpen) return;
 
-        if (isGreeting && isOpen) {
-            setCountdown(5);
+        setCountdown(5);
+        let remaining = 5;
 
-            intervalId = setInterval(() => {
-                setCountdown((prev) => (prev > 1 ? prev - 1 : 0));
-            }, 1000);
+        const intervalId = setInterval(() => {
+            remaining -= 1;
+            setCountdown(remaining);
 
-            timeoutId = setTimeout(() => {
+            if (remaining <= 0) {
+                clearInterval(intervalId);
                 setIsGreeting(false);
-                onConfirm();
-            }, 5000);
-        }
+                if (typeof onConfirmRef.current === 'function') {
+                    onConfirmRef.current();
+                }
+            }
+        }, 1000);
 
         return () => {
-            if (intervalId) clearInterval(intervalId);
-            if (timeoutId) clearTimeout(timeoutId);
+            clearInterval(intervalId);
         };
-    }, [isGreeting, isOpen, onConfirm]);
+    }, [isGreeting, isOpen]);
 
     if (!isOpen || typeof document === 'undefined') return null;
 
@@ -61,7 +68,9 @@ export const SignOutConfirmModal = ({ isOpen, onCancel, onConfirm }) => {
 
     const handleSkipToLogin = () => {
         setIsGreeting(false);
-        onConfirm();
+        if (typeof onConfirmRef.current === 'function') {
+            onConfirmRef.current();
+        }
     };
 
     const handleCancel = () => {

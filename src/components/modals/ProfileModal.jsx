@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useSocket } from '../../context/SocketContext.jsx';
@@ -52,6 +52,12 @@ export const ProfileModal = ({ isOpen, onClose }) => {
             setUploadError(null);
         }
     }, [user, isOpen]);
+
+    const handleConfirmSignOut = useCallback(() => {
+        setShowSignOutConfirm(false);
+        onClose();
+        logout();
+    }, [onClose, logout]);
 
     // Close on ESC
     useEffect(() => {
@@ -481,11 +487,7 @@ export const ProfileModal = ({ isOpen, onClose }) => {
                     <SignOutConfirmModal
                         isOpen={showSignOutConfirm}
                         onCancel={() => setShowSignOutConfirm(false)}
-                        onConfirm={() => {
-                            setShowSignOutConfirm(false);
-                            onClose();
-                            logout();
-                        }}
+                        onConfirm={handleConfirmSignOut}
                     />
 
                     {/* Submit & Action Bar */}

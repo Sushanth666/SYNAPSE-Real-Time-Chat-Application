@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useSocket } from '../../context/SocketContext.jsx';
 import { Avatar } from '../common/Avatar.jsx';
@@ -11,6 +11,11 @@ export const UserProfileFooter = ({ onOpenProfile, onOpenSwitchUser }) => {
     const [statusMenuOpen, setStatusMenuOpen] = useState(false);
     const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
     const menuRef = useRef(null);
+
+    const handleConfirmSignOut = useCallback(() => {
+        setShowSignOutConfirm(false);
+        logout();
+    }, [logout]);
 
     // Close status dropdown if clicking outside
     useEffect(() => {
@@ -52,10 +57,7 @@ export const UserProfileFooter = ({ onOpenProfile, onOpenSwitchUser }) => {
             <SignOutConfirmModal
                 isOpen={showSignOutConfirm}
                 onCancel={() => setShowSignOutConfirm(false)}
-                onConfirm={() => {
-                    setShowSignOutConfirm(false);
-                    logout();
-                }}
+                onConfirm={handleConfirmSignOut}
             />
 
             {/* Presence Popup Menu (Opens upwards when clicking status pill) */}
