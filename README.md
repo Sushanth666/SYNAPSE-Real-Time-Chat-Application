@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/synapse-logo.png" alt="Synapse Logo" width="110" height="110" style="border-radius: 24px;" />
+  <img src="public/synapse-logo.png" alt="Synapse Logo" width="70" height="70" style="border-radius: 24px;" />
 </p>
 
-<h1 align="center">⚡ Synapse — Real-Time Chat Application</h1>
+<h1 align="center"> Synapse — Real-Time Chat Application</h1>
 
 <p align="center">
   <em>Instant state. Seamless conversations.</em><br />
