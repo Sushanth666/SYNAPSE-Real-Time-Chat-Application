@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useTheme } from '../../context/ThemeContext.jsx';
 import { soundManager } from '../../utils/sound.js';
-import { Plus, Moon, Sun, Volume2, VolumeX, } from 'lucide-react';
-export const SidebarHeader = ({ onOpenNewChat }) => {
+import { Plus, Moon, Sun, Volume2, VolumeX, LogOut } from 'lucide-react';
+export const SidebarHeader = ({ onOpenNewChat, onSignOut }) => {
     const { theme, toggleTheme } = useTheme();
     const [soundEnabled, setSoundEnabled] = useState(() => soundManager.getSoundEnabled());
     const handleToggleSound = () => {
@@ -44,6 +44,19 @@ export const SidebarHeader = ({ onOpenNewChat }) => {
           <Plus className="w-3.5 h-3.5 stroke-[2.75] transition-transform duration-300 group-hover:rotate-90" />
           <span>New</span>
         </button>
+
+        {/* Mobile Header Logout Button */}
+        {onSignOut && (
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="md:hidden inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/25 text-xs font-bold transition-all active:scale-95 ml-1 cursor-pointer"
+            title="Sign Out of Synapse"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Logout</span>
+          </button>
+        )}
       </div>
     </div>);
 };

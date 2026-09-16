@@ -142,10 +142,11 @@ export const UserProfileFooter = ({ onOpenProfile, onOpenSwitchUser }) => {
                     <button
                         type="button"
                         onClick={() => setShowSignOutConfirm(true)}
-                        className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        className="p-1.5 px-2 md:px-1.5 rounded-xl text-rose-500 hover:text-rose-600 hover:bg-rose-500/15 bg-rose-500/10 md:bg-transparent transition-all flex items-center gap-1 cursor-pointer"
                         title="Sign Out"
                     >
                         <LogOut className="w-4 h-4"/>
+                        <span className="text-[11px] font-bold text-rose-500 md:hidden">Logout</span>
                     </button>
                 </div>
             </div>

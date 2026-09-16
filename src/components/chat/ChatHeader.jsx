@@ -1,15 +1,22 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useChat } from '../../context/ChatContext.jsx';
 import { Avatar } from '../common/Avatar.jsx';
-import { ArrowLeft, Phone, Video, Search, Sidebar as SidebarIcon, X, Users, Star, Palette, ShieldCheck, FileDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { SignOutConfirmModal } from '../common/SignOutConfirmModal.jsx';
+import { ArrowLeft, Phone, Video, Search, Sidebar as SidebarIcon, X, Users, Star, Palette, ShieldCheck, FileDown, ChevronUp, ChevronDown, LogOut } from 'lucide-react';
 export const ChatHeader = ({ onBackMobile }) => {
-    const { user, allUsers } = useAuth();
+    const { user, allUsers, logout } = useAuth();
     const { activeConversation, isDetailsOpen, setIsDetailsOpen, messageSearchQuery, setMessageSearchQuery, setIsStarredModalOpen, startCall, setIsWallpaperModalOpen, typingUsers, setIsExportModalOpen, setIsE2EEModalOpen, verifiedConversations, messages } = useChat();
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [callNotice, setCallNotice] = useState(null);
     const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+    const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
     const searchInputRef = useRef(null);
+
+    const handleConfirmSignOut = useCallback(() => {
+        setShowSignOutConfirm(false);
+        logout();
+    }, [logout]);
 
     // Filter messages matching query inside this conversation
     const matchingMessages = useMemo(() => {
@@ -209,6 +216,16 @@ export const ChatHeader = ({ onBackMobile }) => {
             : 'text-slate-500 dark:text-slate-400 hover-icon-purple'}`} title="Conversation info & media">
             <SidebarIcon className="w-4 h-4"/>
           </button>
+
+          {/* Mobile Sign Out button */}
+          <button
+            type="button"
+            onClick={() => setShowSignOutConfirm(true)}
+            className="md:hidden p-2 rounded-xl text-rose-500 hover:text-rose-600 hover:bg-rose-500/15 bg-rose-500/10 transition-all cursor-pointer"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -306,5 +323,12 @@ export const ChatHeader = ({ onBackMobile }) => {
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"/>
           <span>{callNotice}</span>
         </div>)}
+
+      {/* Mobile Sign Out Confirmation Dialog */}
+      <SignOutConfirmModal
+        isOpen={showSignOutConfirm}
+        onCancel={() => setShowSignOutConfirm(false)}
+        onConfirm={handleConfirmSignOut}
+      />
     </div>);
 };
