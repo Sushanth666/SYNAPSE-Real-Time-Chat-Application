@@ -1,6 +1,21 @@
-# ⚡ Synapse — Real-Time Chat Application
+<p align="center">
+  <img src="public/synapse-logo.png" alt="Synapse Logo" width="110" height="110" style="border-radius: 24px;" />
+</p>
 
-A modern, high-performance, real-time messaging application engineered with **React 18**, **Node.js**, **Express**, and native **WebSockets**. Synapse delivers a Slack/Discord-grade team communication experience with glassmorphic aesthetics, optimistic updates, threaded conversations, voice memos, live polls, audio/video call simulation, and isolated per-user unread tracking.
+<h1 align="center">⚡ Synapse — Real-Time Chat Application</h1>
+
+<p align="center">
+  <em>Instant state. Seamless conversations.</em><br />
+  A modern, high-performance, real-time messaging application engineered with <b>React 18</b>, <b>Node.js</b>, <b>Express</b>, and native <b>WebSockets</b>. Synapse delivers a Slack/Discord-grade team communication experience with glassmorphic aesthetics, optimistic updates, threaded discussions, voice memos, live polls, audio/video call simulation, and isolated per-user unread tracking.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/React-18.3-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 18" />
+  <img src="https://img.shields.io/badge/Vite-6.2-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite 6" />
+  <img src="https://img.shields.io/badge/TailwindCSS-3.4-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/WebSockets-Native_ws-blue?style=flat-square&logo=socketdotio&logoColor=white" alt="WebSockets" />
+  <img src="https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" />
+</p>
 
 ---
 
